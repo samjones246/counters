@@ -3,11 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
-	"strings"
 )
 
+/*
 var strong map[string][]string = map[string][]string{
 	"normal":   {},
 	"fighting": {"normal", "rock", "steel", "ice", "dark"},
@@ -49,7 +48,7 @@ var weak map[string][]string = map[string][]string{
 	"fairy":    {"poison", "steel", "fire"},
 	"dark":     {"fighting", "dark", "fairy"},
 }
-
+*/
 var vuln map[string][]string = map[string][]string{
 	"ice":      {"steel", "fire", "fighting", "rock"},
 	"dark":     {"bug", "fighting"},
@@ -92,27 +91,34 @@ var res map[string][]string = map[string][]string{
 	"electric": {"steel", "flying", "electric"},
 }
 
-func GetCounters(target string) ([]byte, error) {
-	resp, err := http.Get("http://golang.org")
-	if err != nil {
-		return nil, err
+func GetTypeCounters(types []string) (two []string, four []string) {
+	out := make(map[string]int)
+	for _, t := range types {
+		for _, tRes := range res[t] {
+			out[tRes]--
+		}
+		for _, tVuln := range vuln[t] {
+			out[tVuln]++
+		}
 	}
-	out := make([]byte, 8)
-	resp.Body.Read(out)
-	return out, nil
-}
-
-func GetTypeCounters(target string) []string {
-	return vuln[target]
+	for t, val := range out {
+		if val == 1 {
+			two = append(two, t)
+		}
+		if val == 2 {
+			four = append(four, t)
+		}
+	}
+	return two, four
 }
 
 func main() {
 	log.SetPrefix("")
 	log.SetFlags(0)
 	if len(os.Args) < 2 {
-		log.Fatal("usage: counters <type|pokemon>")
+		log.Fatal("usage: counters type1 [type2]")
 	}
-	target := strings.ToLower(os.Args[1])
-	counters := GetTypeCounters(target)
-	fmt.Println(counters)
+	two, four := GetTypeCounters(os.Args[1:])
+	fmt.Println("2x:", two)
+	fmt.Println("4x:", four)
 }
