@@ -1,9 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"strings"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 /*
@@ -24,7 +28,7 @@ var strong map[string][]string = map[string][]string{
 	"psychic":  {"fighting", "poison"},
 	"ice":      {"flying", "ground", "grass", "dragon"},
 	"dragon":   {"dragon"},
-	"fairy":    {"fighting", "dragon", "ghost"},
+	"fairy":    {"fighting", "dragon", "dark"},
 	"dark":     {"ghost", "psychic"},
 }
 
@@ -51,7 +55,7 @@ var weak map[string][]string = map[string][]string{
 */
 var vuln map[string][]string = map[string][]string{
 	"ice":      {"steel", "fire", "fighting", "rock"},
-	"dark":     {"bug", "fighting"},
+	"dark":     {"bug", "fighting", "fairy"},
 	"normal":   {"fighting"},
 	"poison":   {"ground", "psychic"},
 	"steel":    {"ground", "fire", "fighting"},
@@ -60,7 +64,7 @@ var vuln map[string][]string = map[string][]string{
 	"fairy":    {"poison", "steel"},
 	"rock":     {"ground", "steel", "water", "grass", "fighting"},
 	"water":    {"electric", "grass"},
-	"ghost":    {"fairy", "dark", "ghost"},
+	"ghost":    {"dark", "ghost"},
 	"bug":      {"flying", "fire", "rock"},
 	"grass":    {"ice", "flying", "poison", "fire", "bug"},
 	"flying":   {"ice", "electric", "rock"},
@@ -115,10 +119,34 @@ func GetTypeCounters(types []string) (two []string, four []string) {
 func main() {
 	log.SetPrefix("")
 	log.SetFlags(0)
-	if len(os.Args) < 2 {
-		log.Fatal("usage: counters type1 [type2]")
+	db, err := sql.Open("sqlite3", "file:pokedb.sqlite")
+	if err != nil {
+		log.Fatal(err)
 	}
-	two, four := GetTypeCounters(os.Args[1:])
-	fmt.Println("2x:", two)
-	fmt.Println("4x:", four)
+	pname := os.Args[1]
+	pname = strings.ToUpper(string(pname[0])) + strings.ToLower(pname[1:])
+	rows, err := db.Query("select TYPE1, TYPE2 from 'POKEMON' where NAME LIKE ?", os.Args[1])
+	if err != nil {
+		log.Fatal(err)
+	}
+	rows.Next()
+	var t1, t2 string
+	err = rows.Scan(&t1, &t2)
+	if err != nil {
+		log.Fatalf("Pokemon \"%v\" not found", pname)
+	}
+	var ts []string
+	ts = append(ts, t1)
+	if t2 != "" {
+		ts = append(ts, t2)
+		fmt.Printf("%v is %v and %v type\n", pname, t1, t2)
+	} else {
+		fmt.Printf("%v is %v type\n", pname, t1)
+	}
+	two, four := GetTypeCounters(ts)
+	fmt.Println("Type Counters:")
+	fmt.Println("  1.6x:", two)
+	if len(four) > 0 {
+		fmt.Println("  2.56x", four)
+	}
 }
