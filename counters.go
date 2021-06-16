@@ -95,6 +95,65 @@ var res map[string][]string = map[string][]string{
 	"electric": {"steel", "flying", "electric"},
 }
 
+func GetBestAttackers(ptypes []string) []string {
+	db, err := sql.Open("sqlite3", "file:pokedb.sqlite")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ptypesList := strings.Join(ptypes, ",")
+	rows, err := db.Query(`
+	SELECT P.DEX, P.NAME, P.TYPE1, P.TYPE2, P.MAXCP, FM.NAME AS FAST, MAX(FM.DPS) AS DPS, CM.NAME AS CHARGE, MAX(CM.DPE) AS DPE
+	FROM POKEMON P
+	INNER JOIN HAS_CHARGE_MOVE HCM
+	ON P.DEX == HCM.DEX
+	INNER JOIN HAS_FAST_MOVE HFM
+	ON P.DEX == HFM.DEX
+	LEFT OUTER JOIN CHARGE_MOVES CM
+	ON HCM.MOVE_ID == CM.ID
+	LEFT OUTER JOIN FAST_MOVES FM
+	ON HFM.MOVE_ID == FM.ID
+	WHERE (
+		TYPE1 == ?
+	 OR TYPE2 == ?
+	)
+	AND FM.TYPE == ?
+	AND CM.TYPE == ?
+	AND (
+		FM.TYPE == P.TYPE1
+	 OR FM.TYPE == P.TYPE2
+	)
+	AND (
+		CM.TYPE == P.TYPE1
+	 OR CM.TYPE == P.TYPE2
+	)
+	GROUP BY P.DEX
+	ORDER BY P.MAXCP DESC
+	LIMIT 5`, ptypesList, ptypesList, ptypesList, ptypesList)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var out []string
+	for rows.Next() {
+		var name, t1, t2, fm_name, cm_name string
+		var dex, maxcp, cm_dpe int
+		var fm_dps float64
+		err = rows.Scan(&dex, &name, &t1, &t2, &maxcp, &fm_name, &fm_dps, &cm_name, &cm_dpe)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var typestr string
+		if t2 != "" {
+			typestr = t1 + " and " + t2
+		} else {
+			typestr = t1
+		}
+		str := fmt.Sprintf("--%03d %v--\n%v\nMax CP: %v\nFast Move: %v (%.2f DPS)\nCharged Move: %v (%d DPE)",
+			dex, name, typestr, maxcp, fm_name, fm_dps, cm_name, cm_dpe)
+		out = append(out, str)
+	}
+	return out
+}
+
 func GetTypeCounters(types []string) (two []string, four []string) {
 	out := make(map[string]int)
 	for _, t := range types {
@@ -124,6 +183,10 @@ func main() {
 		log.Fatal(err)
 	}
 	pname := os.Args[1]
+	if pname == "scrape" {
+		ScrapeMoves()
+		os.Exit(0)
+	}
 	pname = strings.ToUpper(string(pname[0])) + strings.ToLower(pname[1:])
 	rows, err := db.Query("select TYPE1, TYPE2 from 'POKEMON' where NAME LIKE ?", os.Args[1])
 	if err != nil {
@@ -148,5 +211,14 @@ func main() {
 	fmt.Println("  1.6x:", two)
 	if len(four) > 0 {
 		fmt.Println("  2.56x", four)
+	}
+	var pcounters []string
+	if len(four) > 0 {
+		pcounters = GetBestAttackers(four)
+	} else {
+		pcounters = GetBestAttackers(two)
+	}
+	for _, counter := range pcounters {
+		fmt.Println(counter)
 	}
 }
