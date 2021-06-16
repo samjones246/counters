@@ -1,12 +1,12 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -95,14 +95,8 @@ var res map[string][]string = map[string][]string{
 	"electric": {"steel", "flying", "electric"},
 }
 
-func GetBestAttackers(ptypes []string) []string {
-	db, err := sql.Open("sqlite3", "file:pokedb.sqlite")
-	if err != nil {
-		log.Fatal(err)
-	}
-	ptypesList := strings.Join(ptypes, ",")
-	rows, err := db.Query(`
-	SELECT P.DEX, P.NAME, P.TYPE1, P.TYPE2, P.MAXCP, FM.NAME AS FAST, MAX(FM.DPS) AS DPS, CM.NAME AS CHARGE, MAX(CM.DPE) AS DPE
+func GetBestAttackers(ptypes []string, db *sqlx.DB) []string {
+	q, args, err := sqlx.In(`SELECT P.DEX, P.NAME, P.TYPE1, P.TYPE2, P.MAXCP, FM.NAME AS FAST, MAX(FM.DPS) AS DPS, CM.NAME AS CHARGE, MAX(CM.DPE) AS DPE
 	FROM POKEMON P
 	INNER JOIN HAS_CHARGE_MOVE HCM
 	ON P.DEX == HCM.DEX
@@ -113,11 +107,11 @@ func GetBestAttackers(ptypes []string) []string {
 	LEFT OUTER JOIN FAST_MOVES FM
 	ON HFM.MOVE_ID == FM.ID
 	WHERE (
-		TYPE1 == ?
-	 OR TYPE2 == ?
+		TYPE1 IN (?)
+	 OR TYPE2 IN (?)
 	)
-	AND FM.TYPE == ?
-	AND CM.TYPE == ?
+	AND FM.TYPE IN (?)
+	AND CM.TYPE IN (?)
 	AND (
 		FM.TYPE == P.TYPE1
 	 OR FM.TYPE == P.TYPE2
@@ -128,7 +122,11 @@ func GetBestAttackers(ptypes []string) []string {
 	)
 	GROUP BY P.DEX
 	ORDER BY P.MAXCP DESC
-	LIMIT 5`, ptypesList, ptypesList, ptypesList, ptypesList)
+	LIMIT 5`, ptypes, ptypes, ptypes, ptypes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rows, err := db.Query(q, args...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -178,7 +176,8 @@ func GetTypeCounters(types []string) (two []string, four []string) {
 func main() {
 	log.SetPrefix("")
 	log.SetFlags(0)
-	db, err := sql.Open("sqlite3", "file:pokedb.sqlite")
+	dbpath := os.ExpandEnv("file:${GOPATH}\\bin\\pokedb.sqlite")
+	db, err := sqlx.Open("sqlite3", dbpath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -214,9 +213,9 @@ func main() {
 	}
 	var pcounters []string
 	if len(four) > 0 {
-		pcounters = GetBestAttackers(four)
+		pcounters = GetBestAttackers(four, db)
 	} else {
-		pcounters = GetBestAttackers(two)
+		pcounters = GetBestAttackers(two, db)
 	}
 	for _, counter := range pcounters {
 		fmt.Println(counter)
